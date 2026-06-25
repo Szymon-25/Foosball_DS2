@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .pitch-bg {
+    background-color: #1a6b2e;
+    background-image: 
+      radial-gradient(circle at center, transparent 30%, transparent 30.5%, rgba(255, 255, 255, 0.15) 30.5%, rgba(255, 255, 255, 0.15) 31%, transparent 31%),
+      linear-gradient(to right, transparent 49.8%, rgba(255, 255, 255, 0.15) 49.8%, rgba(255, 255, 255, 0.15) 50.2%, transparent 50.2%);
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+body {
+  color: white;
+  background-color: #1a6b2e;
+}
+
+input, textarea {
+  color: #0f3a1a;
+}
