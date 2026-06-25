@@ -1,5 +1,4 @@
-import fs from 'fs/promises';
-import path from 'path';
+import { neon } from '@neondatabase/serverless';
 
 export type RegistrationStatus = 'pending' | 'accepted' | 'rejected';
 export type Format = 'Solo' | '2 people';
@@ -14,35 +13,96 @@ export interface Registration {
   createdAt: string;
 }
 
-const DATA_FILE = path.join(process.cwd(), 'data', 'registrations.json');
+const getSql = () => {
+  if (!process.env.DATABASE_URL) {
+    console.warn("DATABASE_URL is not set. Database will not work.");
+    // Return a dummy function to prevent build crashes
+    return async () => [];
+  }
+  return neon(process.env.DATABASE_URL);
+};
+
+// Ensure the table exists
+let tableInitialized = false;
+async function initTable() {
+  if (tableInitialized) return;
+  if (!process.env.DATABASE_URL) return;
+  
+  try {
+    const sql = getSql();
+    await sql`
+      CREATE TABLE IF NOT EXISTS registrations (
+        id UUID PRIMARY KEY,
+        "teamName" VARCHAR(255) NOT NULL,
+        format VARCHAR(50) NOT NULL,
+        skill INTEGER NOT NULL,
+        "secretPhrase" VARCHAR(255) NOT NULL,
+        status VARCHAR(50) NOT NULL,
+        "createdAt" VARCHAR(255) NOT NULL
+      );
+    `;
+    tableInitialized = true;
+  } catch (e) {
+    console.error("Failed to initialize table", e);
+  }
+}
 
 export async function getRegistrations(): Promise<Registration[]> {
   try {
-    const data = await fs.readFile(DATA_FILE, 'utf-8');
-    return JSON.parse(data).registrations;
-  } catch {
+    await initTable();
+    if (!process.env.DATABASE_URL) return [];
+    
+    const sql = getSql();
+    const rows = await sql`
+      SELECT id, "teamName", format, skill, "secretPhrase", status, "createdAt"
+      FROM registrations
+      ORDER BY "createdAt" ASC;
+    `;
+    return rows as Registration[];
+  } catch (e) {
+    console.error("Failed to fetch registrations", e);
     return [];
   }
 }
 
-export async function saveRegistrations(registrations: Registration[]) {
-  await fs.mkdir(path.dirname(DATA_FILE), { recursive: true });
-  await fs.writeFile(DATA_FILE, JSON.stringify({ registrations }, null, 2));
-}
-
 export async function addRegistration(registration: Registration) {
-  const registrations = await getRegistrations();
-  registrations.push(registration);
-  await saveRegistrations(registrations);
+  try {
+    await initTable();
+    if (!process.env.DATABASE_URL) return;
+
+    const sql = getSql();
+    await sql`
+      INSERT INTO registrations (id, "teamName", format, skill, "secretPhrase", status, "createdAt")
+      VALUES (
+        ${registration.id},
+        ${registration.teamName},
+        ${registration.format},
+        ${registration.skill},
+        ${registration.secretPhrase},
+        ${registration.status},
+        ${registration.createdAt}
+      );
+    `;
+  } catch (e) {
+    console.error("Failed to add registration", e);
+  }
 }
 
 export async function updateRegistrationStatus(id: string, status: RegistrationStatus) {
-  const registrations = await getRegistrations();
-  const index = registrations.findIndex(r => r.id === id);
-  if (index !== -1) {
-    registrations[index].status = status;
-    await saveRegistrations(registrations);
-    return true;
+  try {
+    await initTable();
+    if (!process.env.DATABASE_URL) return false;
+
+    const sql = getSql();
+    const result = await sql`
+      UPDATE registrations
+      SET status = ${status}
+      WHERE id = ${id}
+      RETURNING id;
+    `;
+    return result.length > 0;
+  } catch (e) {
+    console.error("Failed to update status", e);
+    return false;
   }
-  return false;
 }
