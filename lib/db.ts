@@ -13,20 +13,31 @@ export interface Registration {
   createdAt: string;
 }
 
+// Neon/Vercel can set the connection string under different env var names
+function getDbUrl(): string | undefined {
+  return process.env.DATABASE_URL
+    || process.env.POSTGRES_URL
+    || process.env.NEON_DATABASE_URL
+    || process.env.POSTGRES_URL_NON_POOLING;
+}
+
 const getSql = () => {
-  if (!process.env.DATABASE_URL) {
-    console.warn("DATABASE_URL is not set. Database will not work.");
+  const url = getDbUrl();
+  if (!url) {
+    console.warn("No database URL found (checked DATABASE_URL, POSTGRES_URL, NEON_DATABASE_URL, POSTGRES_URL_NON_POOLING). Database will not work.");
     // Return a dummy function to prevent build crashes
     return async () => [];
   }
-  return neon(process.env.DATABASE_URL);
+  return neon(url);
 };
+
+const hasDb = () => !!getDbUrl();
 
 // Ensure the table exists
 let tableInitialized = false;
 async function initTable() {
   if (tableInitialized) return;
-  if (!process.env.DATABASE_URL) return;
+  if (!hasDb()) return;
   
   try {
     const sql = getSql();
@@ -50,7 +61,7 @@ async function initTable() {
 export async function getRegistrations(): Promise<Registration[]> {
   try {
     await initTable();
-    if (!process.env.DATABASE_URL) return [];
+    if (!hasDb()) return [];
     
     const sql = getSql();
     const rows = await sql`
@@ -66,32 +77,30 @@ export async function getRegistrations(): Promise<Registration[]> {
 }
 
 export async function addRegistration(registration: Registration) {
-  try {
-    await initTable();
-    if (!process.env.DATABASE_URL) return;
-
-    const sql = getSql();
-    await sql`
-      INSERT INTO registrations (id, "teamName", format, skill, "secretPhrase", status, "createdAt")
-      VALUES (
-        ${registration.id},
-        ${registration.teamName},
-        ${registration.format},
-        ${registration.skill},
-        ${registration.secretPhrase},
-        ${registration.status},
-        ${registration.createdAt}
-      );
-    `;
-  } catch (e) {
-    console.error("Failed to add registration", e);
+  await initTable();
+  if (!hasDb()) {
+    throw new Error("Database is not configured.");
   }
+
+  const sql = getSql();
+  await sql`
+    INSERT INTO registrations (id, "teamName", format, skill, "secretPhrase", status, "createdAt")
+    VALUES (
+      ${registration.id},
+      ${registration.teamName},
+      ${registration.format},
+      ${registration.skill},
+      ${registration.secretPhrase},
+      ${registration.status},
+      ${registration.createdAt}
+    );
+  `;
 }
 
 export async function updateRegistrationStatus(id: string, status: RegistrationStatus) {
   try {
     await initTable();
-    if (!process.env.DATABASE_URL) return false;
+    if (!hasDb()) return false;
 
     const sql = getSql();
     const result = await sql`
