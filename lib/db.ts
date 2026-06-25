@@ -13,12 +13,28 @@ export interface Registration {
   createdAt: string;
 }
 
-// Neon/Vercel can set the connection string under different env var names
+// Neon/Vercel can set the connection string under different env var names.
+// The marketplace integration uses individual NEON_POSTGRES_* params instead of a single URL.
 function getDbUrl(): string | undefined {
-  return process.env.DATABASE_URL
-    || process.env.POSTGRES_URL
-    || process.env.NEON_DATABASE_URL
-    || process.env.POSTGRES_URL_NON_POOLING;
+  // Try full URL vars first
+  const urlVar =
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.NEON_DATABASE_URL ||
+    process.env.POSTGRES_URL_NON_POOLING;
+  if (urlVar) return urlVar;
+
+  // Fall back to building a URL from NEON_POSTGRES_* individual params
+  const host = process.env.NEON_POSTGRES_PGHOST || process.env.NEON_POSTGRES_HOST;
+  const user = process.env.NEON_POSTGRES_PGUSER || process.env.NEON_POSTGRES_USER || process.env.NEON_POSTGRES_POSTGRES_USER;
+  const pass = process.env.NEON_POSTGRES_PGPASSWORD || process.env.NEON_POSTGRES_PASSWORD || process.env.NEON_POSTGRES_POSTGRES_PASSWORD;
+  const db   = process.env.NEON_POSTGRES_PGDATABASE || process.env.NEON_POSTGRES_DATABASE;
+
+  if (host && user && pass && db) {
+    return `postgresql://${user}:${encodeURIComponent(pass)}@${host}/${db}?sslmode=require`;
+  }
+
+  return undefined;
 }
 
 const getSql = () => {
